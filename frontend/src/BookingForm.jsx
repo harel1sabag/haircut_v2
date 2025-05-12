@@ -44,17 +44,18 @@ export default function BookingForm({ onSuccess }) {
       component="form"
       onSubmit={handleSubmit}
       sx={{
-        bgcolor: 'rgba(44,44,44,0.98)',
+        bgcolor: '#fff',
         borderRadius: 4,
         boxShadow: 6,
         p: { xs: 3, sm: 4 },
         direction: 'rtl',
-        color: 'white',
+        color: '#1565c0',
         fontFamily: 'Heebo, Arial, sans-serif',
         textAlign: 'right',
+        border: '1px solid #90caf9',
       }}
     >
-      <Typography variant="h5" fontWeight={700} gutterBottom sx={{ color: '#fff', mb: 3 }}>
+      <Typography variant="h5" fontWeight={700} gutterBottom sx={{ color: '#1565c0', mb: 3 }}>
         פרטי הזמנה
       </Typography>
       <TextField
