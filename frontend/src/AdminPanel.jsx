@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { db } from './firebase';
-import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, deleteDoc } from 'firebase/firestore';
 import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, IconButton, Typography, CircularProgress, Box, Button } from '@mui/material';
 import { collection as fsCollection, getDocs as fsGetDocs } from 'firebase/firestore';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -40,6 +40,7 @@ export default function AdminPanel() {
   const handleDelete = async (id) => {
     if (!window.confirm('האם למחוק את התור?')) return;
     try {
+      const { doc } = await import('firebase/firestore');
       await deleteDoc(doc(db, 'appointments', id));
       setAppointments(appointments.filter(a => a.id !== id));
     } catch (e) {
@@ -155,6 +156,7 @@ export default function AdminPanel() {
                         size="small"
                         sx={{ fontWeight: 700, px: 2, minWidth: 0 }}
                         onClick={async () => {
+                          const { updateDoc, doc } = await import('firebase/firestore');
                           await updateDoc(doc(db, 'appointments', row.id), { done: true });
                           setAppointments(apps => apps.map(a => a.id === row.id ? { ...a, done: true } : a));
                         }}
