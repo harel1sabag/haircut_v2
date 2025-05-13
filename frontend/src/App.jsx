@@ -17,7 +17,23 @@ export default function App() {
 
   const handleLogin = async () => {
     try {
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      // הוסף את המשתמש ל-Firestore אם לא קיים
+      const { doc, getDoc, setDoc } = await import('firebase/firestore');
+      // השתמש ב-db שמיובא מהקובץ firebase.js
+
+      const userRef = doc(db, 'users', user.uid);
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) {
+        await setDoc(userRef, {
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName || '',
+          creationTime: user.metadata.creationTime,
+          lastSignInTime: user.metadata.lastSignInTime,
+        });
+      }
       setShowForm(true); // פתח אוטומטית את טופס קביעת התור
     } catch (e) {
       alert('שגיאה בהתחברות: ' + e.message);
