@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: "AIzaSyA6KTSxE6mafT-iXA3pMrM5S1xHkrTtY9U",
@@ -20,5 +21,16 @@ console.log('[Firebase] Auth exported:', auth);
 
 export const provider = new GoogleAuthProvider();
 console.log('[Firebase] GoogleAuthProvider exported:', provider);
+
+export const db = getFirestore(app);
+console.log('[Firebase] Firestore DB exported:', db);
+
+// Admins
+export const ADMINS = [
+  'sabag1715@gmail.com'
+];
+export function isAdmin(email) {
+  return ADMINS.includes(email);
+}
 
 export { signInWithPopup, signOut };
