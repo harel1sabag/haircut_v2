@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { db } from './firebase';
 import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, IconButton, Typography, CircularProgress, Box } from '@mui/material';
+import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, IconButton, Typography, CircularProgress, Box, Button } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
+import { signOut } from 'firebase/auth';
+import { auth } from './firebase';
 
 export default function AdminPanel() {
   const [appointments, setAppointments] = useState([]);
@@ -38,6 +40,28 @@ export default function AdminPanel() {
 
   return (
     <Box sx={{ mt: 4, mb: 4 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Button
+          onClick={() => signOut(auth)}
+          sx={{
+            backgroundColor: '#e53935',
+            color: '#fff',
+            fontWeight: 700,
+            borderRadius: 3,
+            px: 3,
+            py: 1,
+            fontSize: 18,
+            boxShadow: 2,
+            '&:hover': {
+              backgroundColor: '#b71c1c',
+              color: '#fff',
+            },
+          }}
+          variant="contained"
+        >
+          התנתק
+        </Button>
+      </Box>
       <Typography variant="h4" sx={{ mb: 3, fontWeight: 700, textAlign: 'center', color: '#1565c0' }}>
         כל התורים שנקבעו
       </Typography>

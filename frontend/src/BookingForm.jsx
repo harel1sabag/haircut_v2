@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
-import { Box, TextField, Button, MenuItem, Typography, Alert } from '@mui/material';
+import { Box, TextField, Button, MenuItem, Typography, Alert, Paper, Table, TableHead, TableBody, TableRow, TableCell } from '@mui/material';
 import { db } from './firebase';
 import { collection, addDoc } from 'firebase/firestore';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { CalendarPicker } from '@mui/x-date-pickers/CalendarPicker';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { PickersDay } from '@mui/x-date-pickers/PickersDay';
+import heLocale from 'date-fns/locale/he';
 
 const times = [
   '15:00', '16:00', '17:00', '18:00', '19:00',
@@ -143,22 +148,115 @@ export default function BookingForm({ onSuccess, user }) {
         InputLabelProps={{ style: { right: 0, left: 'unset', color: '#1976d2' }, shrink: true }}
         inputProps={{ style: { textAlign: 'right' } }}
       />
-      <TextField
-        label="תאריך"
-        name="date"
-        type="date"
-        value={form.date}
-        onChange={handleChange}
-        fullWidth
-        required
-        sx={{ mb: 1, bgcolor: '#fff', borderRadius: 2, input: { fontFamily: 'Heebo' }, label: { color: '#1976d2' } }}
-        InputLabelProps={{ style: { right: 0, left: 'unset', color: '#1976d2' }, shrink: true }}
-        inputProps={{ 
-          style: { textAlign: 'right' },
-          min: new Date(Date.now() + 24*60*60*1000).toISOString().split('T')[0],
-          max: new Date(Date.now() + 13*24*60*60*1000).toISOString().split('T')[0],
-        }}
-      />
+      <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 700, color: '#1976d2', textAlign: 'right' }}>
+  בחר תאריך:
+</Typography>
+<Paper elevation={3} sx={{ p: 1, mb: 2, bgcolor: '#fff', borderRadius: 2, direction: 'rtl', display: 'flex', justifyContent: 'center', alignItems: 'center', maxWidth: 420, width: '100%', boxSizing: 'border-box' }}>
+  <Table sx={{ fontFamily: 'Heebo', direction: 'rtl', width: '100%', minWidth: 0, margin: '0 auto', tableLayout: 'fixed', borderCollapse: 'separate', borderSpacing: '6px 10px' }}>
+  <TableHead>
+    <TableRow>
+      {['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'שבת'].map((day, i) => (
+        <TableCell
+          key={i}
+          align="center"
+          sx={{
+            fontFamily: 'Heebo',
+            fontSize: 19,
+            fontWeight: 700,
+            color: '#1976d2',
+            bgcolor: 'transparent',
+            border: 'none',
+            borderRadius: 0,
+            py: 1,
+            px: 1.5,
+            letterSpacing: 1
+          }}
+        >
+          {day}
+        </TableCell>
+      ))}
+    </TableRow>
+  </TableHead>
+  <TableBody>
+    {(() => {
+      // צור את כל התאריכים בטווח
+      const days = Array.from({length: 14}, (_, i) => {
+        const dateObj = new Date(Date.now() + i*24*60*60*1000);
+        const dateStr = dateObj.toISOString().split('T')[0];
+        const day = dateObj.getDate();
+        const month = dateObj.getMonth() + 1;
+        const display = `${day}.${month}`;
+        const weekdayIdx = dateObj.getDay(); // 0=א׳, 1=ב׳ ... 6=שבת
+        const weekday = dateObj.toLocaleDateString('he-IL', { weekday: 'short' });
+        return { dateStr, display, weekday, weekdayIdx };
+      });
+      // מצא את היום בשבוע של התאריך הראשון
+      const firstDayIdx = days[0].weekdayIdx;
+      // בנה מערך שורות, כל שורה 7 תאים (ימים בשבוע)
+      const rows = [];
+      let week = Array(7).fill(null);
+      let dayPtr = 0;
+      // מלא תאים ריקים בתחילת השבוע הראשון
+      for (let i = 0; i < firstDayIdx; i++) week[i] = null;
+      for (let i = 0; i < days.length; i++) {
+        const d = days[i];
+        week[d.weekdayIdx] = d;
+        // אם הגענו לסוף שבוע או לסוף מערך — דחוף שורה
+        if (d.weekdayIdx === 6 || i === days.length-1) {
+          rows.push(week);
+          week = Array(7).fill(null);
+        }
+      }
+      return rows.map((week, idx) => (
+        <TableRow key={idx}>
+          {week.map((d, colIdx) => {
+            if (!d) return <TableCell key={colIdx} sx={{ bgcolor: 'transparent', border: 'none', minWidth: 60, maxWidth: 80, height: 48, p: 1, m: 1.2 }} />;
+            const selected = form.date === d.dateStr;
+            return (
+              <TableCell
+                key={d.dateStr}
+                align="center"
+                sx={{
+                  fontFamily: 'Heebo',
+                  fontSize: 16,
+                  borderRadius: '8px',
+                  bgcolor: selected ? '#1976d2' : '#f5f5f5',
+                  color: selected ? '#fff' : '#1565c0',
+                  border: 'none',
+                  fontWeight: selected ? 700 : 400,
+                  cursor: 'pointer',
+                  transition: '0.2s',
+                  boxShadow: selected ? '0 2px 12px #1976d2bb' : '0 1px 2px #e0e0e0',
+                  p: 1,
+                  m: 1.2,
+                  minWidth: 60,
+                  maxWidth: 80,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  outline: selected ? '2px solid #1976d2' : 'none',
+                  outlineOffset: '-2px',
+                  '&:hover': {
+                    bgcolor: selected ? '#115293' : '#e3e9f0',
+                    color: selected ? '#fff' : '#1565c0',
+                    boxShadow: '0 4px 16px #90caf9aa',
+                  }
+                }}
+                onClick={() => {
+                  setForm(f => ({ ...f, date: d.dateStr, time: '' }));
+                  setError('');
+                }}
+              >
+                <div style={{fontSize: 18, fontWeight: 500, lineHeight: 1.2}}>{d.display}</div>
+              </TableCell>
+            );
+          })}
+        </TableRow>
+      ));
+    })()}
+  </TableBody>
+</Table>
+</Paper>
       
       <TextField
         select
