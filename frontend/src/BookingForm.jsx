@@ -7,6 +7,7 @@ import { CalendarPicker } from '@mui/x-date-pickers/CalendarPicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { PickersDay } from '@mui/x-date-pickers/PickersDay';
 import heLocale from 'date-fns/locale/he';
+import { fetchWorkingHours, isTimeAvailable } from './utilsWorkingHours';
 
 const times = [
   '15:00', '16:00', '17:00', '18:00', '19:00',
@@ -41,6 +42,11 @@ export default function BookingForm({ onSuccess, user }) {
   const [hasAppointment, setHasAppointment] = useState(false);
 
   const [appointmentDoc, setAppointmentDoc] = useState(null);
+  const [workingHours, setWorkingHours] = useState(null);
+
+  React.useEffect(() => {
+    fetchWorkingHours().then(setWorkingHours);
+  }, []);
 
   React.useEffect(() => {
     async function checkExisting() {
@@ -94,6 +100,11 @@ export default function BookingForm({ onSuccess, user }) {
     const maxDate = new Date(Date.now() + 13*24*60*60*1000).toISOString().split('T')[0];
     if (form.date < minDate || form.date > maxDate) {
       setError('ניתן לקבוע תור רק מהיום ועד שבועיים קדימה');
+      setLoading(false);
+      return;
+    }
+    if (!form.time) {
+      setError('יש לבחור שעה');
       setLoading(false);
       return;
     }
@@ -286,6 +297,10 @@ export default function BookingForm({ onSuccess, user }) {
                   {week.map((d, colIdx) => {
                     if (!d) return <TableCell key={colIdx} sx={{ bgcolor: 'transparent', border: 'none', minWidth: 60, maxWidth: 80, height: 48, p: 1, m: 1.2 }} />;
                     const selected = form.date === d.dateStr;
+                    // ויזואליות ליום סגור
+                    const isClosed = workingHours && !workingHours[
+                      ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'][d.weekdayIdx]
+                    ]?.open;
                     return (
                       <TableCell
                         key={d.dateStr}
@@ -294,11 +309,12 @@ export default function BookingForm({ onSuccess, user }) {
                           fontFamily: 'Heebo',
                           fontSize: 16,
                           borderRadius: '8px',
-                          bgcolor: selected ? '#1976d2' : '#f5f5f5',
-                          color: selected ? '#fff' : '#1565c0',
-                          border: 'none',
+                          bgcolor: selected ? '#1976d2' : isClosed ? '#eee' : '#f5f5f5',
+                          color: selected ? '#fff' : isClosed ? '#bbb' : '#1565c0',
+                          border: selected ? '2px solid #1976d2' : isClosed ? '1px solid #ddd' : '1px solid #b3c6e0',
                           fontWeight: selected ? 700 : 400,
-                          cursor: 'pointer',
+                          cursor: isClosed ? 'not-allowed' : 'pointer',
+                          opacity: isClosed ? 0.6 : 1,
                           transition: '0.2s',
                           boxShadow: selected ? '0 2px 12px #1976d2bb' : '0 1px 2px #e0e0e0',
                           p: 1,
@@ -360,7 +376,49 @@ export default function BookingForm({ onSuccess, user }) {
       <Table sx={{ fontFamily: 'Heebo', direction: 'rtl', width: '100%', minWidth: 0, margin: '0 auto', tableLayout: 'fixed', borderCollapse: 'separate', borderSpacing: '6px 10px', mb: 2 }}>
         <TableBody>
           <TableRow>
-            {times.map((time) => (
+            {/* סינון שעות לפי שעות פעילות */}
+            {workingHours && times.filter(time => form.date && isTimeAvailable(workingHours, form.date, time)).length === 0 && (
+              <TableCell colSpan={times.length} align="center" sx={{ color: 'red', fontWeight: 700 }}>
+                אין שעות פעילות ביום זה
+              </TableCell>
+            )}
+            {workingHours && times.filter(time => form.date && isTimeAvailable(workingHours, form.date, time)).map((time) => (
+              <TableCell
+                key={time}
+                align="center"
+                sx={{
+                  fontFamily: 'Heebo',
+                  fontSize: 18,
+                  borderRadius: '8px',
+                  bgcolor: form.time === time ? '#1976d2' : '#f5f5f5',
+                  color: form.time === time ? '#fff' : '#1565c0',
+                  border: form.time === time ? 'none' : '1px solid #b3c6e0',
+                  fontWeight: form.time === time ? 700 : 400,
+                  cursor: 'pointer',
+                  transition: '0.2s',
+                  boxShadow: form.time === time ? '0 2px 12px #1976d2bb' : '0 1px 2px #e0e0e0',
+                  p: 1,
+                  m: 1.2,
+                  minWidth: 60,
+                  maxWidth: 80,
+                  outline: form.time === time ? '2px solid #1976d2' : 'none',
+                  outlineOffset: '-2px',
+                  '&:hover': {
+                    bgcolor: form.time === time ? '#115293' : '#e3e9f0',
+                    color: form.time === time ? '#fff' : '#1976d2',
+                    boxShadow: '0 4px 16px #90caf9aa',
+                  }
+                }}
+                onClick={() => {
+                  setForm(f => ({ ...f, time }));
+                  setError('');
+                }}
+              >
+                {time}
+              </TableCell>
+            ))}
+            {/* אם עדיין לא נטען workingHours, הצג את כל השעות */}
+            {!workingHours && times.map((time) => (
               <TableCell
                 key={time}
                 align="center"
@@ -398,8 +456,6 @@ export default function BookingForm({ onSuccess, user }) {
           </TableRow>
         </TableBody>
       </Table>
-
-      {error && <Alert severity="error" sx={{ mb: 4, fontFamily: 'Heebo' }}>{error}</Alert>}
       <Button
         type="submit"
         variant="contained"

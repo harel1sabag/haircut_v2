@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { db } from './firebase';
+import WorkingHoursAdmin from './WorkingHoursAdmin';
 import { collection, getDocs, deleteDoc } from 'firebase/firestore';
 import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, IconButton, Typography, CircularProgress, Box, Button } from '@mui/material';
 import { collection as fsCollection, getDocs as fsGetDocs } from 'firebase/firestore';
@@ -58,6 +59,8 @@ export default function AdminPanel() {
 
   return (
     <Box sx={{ mt: 4, mb: 4 }}>
+      <WorkingHoursAdmin />
+      <Box sx={{ height: 32 }} />
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
         <Button
           onClick={() => signOut(auth)}
