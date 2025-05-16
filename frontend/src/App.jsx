@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Container, Typography, Button, Box, Snackbar, Alert, Avatar } from '@mui/material';
 import BookingForm from './BookingForm';
 import AdminPanel from './AdminPanel';
+import AppointmentHistory from './AppointmentHistory';
 import { isAdmin } from './firebase';
 import { auth, provider, signInWithPopup, signOut } from './firebase';
 
@@ -83,73 +84,54 @@ export default function App() {
     return <AdminPanel />;
   }
 
+  // נשתמש ב-state כדי להסתיר את טופס קביעת התור אם כבר יש תור פעיל
+  const [hasActiveAppointment, setHasActiveAppointment] = useState(false);
+  const [activeAppointment, setActiveAppointment] = useState(null);
+
+  // נעקוב אחרי התור הפעיל באמצעות useEffect
+  useEffect(() => {
+    async function checkActiveAppointment() {
+      if (!user?.email) return;
+      const { getDocs, query, collection, where } = await import('firebase/firestore');
+      const { db } = await import('./firebase');
+      const appointmentsRef = collection(db, "appointments");
+      const q = query(appointmentsRef, where("email", "==", user.email));
+      const snapshot = await getDocs(q);
+      const futureAppointments = snapshot.docs
+        .map(doc => ({ ...doc.data(), id: doc.id }))
+        .filter(app => !app.done);
+      if (futureAppointments.length > 0) {
+        setHasActiveAppointment(true);
+        setActiveAppointment(futureAppointments[0]);
+      } else {
+        setHasActiveAppointment(false);
+        setActiveAppointment(null);
+      }
+    }
+    checkActiveAppointment();
+  }, [user]);
+
   return (
-    <Container maxWidth="sm" sx={{ mt: 8, mb: 8, fontFamily: 'Heebo, Arial, sans-serif' }}>
-      <Box
-        sx={{
-          bgcolor: '#fff',
-          borderRadius: 4,
-          boxShadow: 6,
-          p: { xs: 3, sm: 5 },
-          textAlign: 'right',
-          direction: 'rtl',
-          color: '#1a237e',
-          position: 'relative',
-          border: '1px solid #90caf9',
-        }}
-      >
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, justifyContent: 'space-between' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', minHeight: 120, mb: 2 }}>
-            <Avatar
-              sx={{ bgcolor: '#1976d2', width: 80, height: 80, ml: 3 }}
-              src="https://fonts.gstatic.com/s/i/materialiconsoutlined/content_cut/v16/24px.svg"
-              alt="Barber"
-            />
-            <Box>
-              <Typography variant="h3" fontWeight={700} gutterBottom sx={{ fontFamily: 'Heebo', color: '#1565c0', mb: 0, fontSize: { xs: 28, sm: 38 } }}>
-                קביעת תורים לתספורת
-              </Typography>
-              
-            </Box>
-          </Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Avatar src={user.photoURL} alt={user.displayName} sx={{ width: 40, height: 40, ml: 1 }} />
-            <Typography sx={{ color: '#1565c0', fontWeight: 700 }}>{user.displayName}</Typography>
-            <Button
-  onClick={handleLogout}
-  sx={{
-    ml: 2,
-    backgroundColor: '#e53935',
-    color: '#fff',
-    fontWeight: 700,
-    borderRadius: 3,
-    px: 3,
-    py: 1,
-    fontSize: 18,
-    boxShadow: 2,
-    '&:hover': {
-      backgroundColor: '#b71c1c',
-      color: '#fff',
-    },
-  }}
-  variant="contained"
->
-  התנתק
-</Button>
-          </Box>
-        </Box>
-        
-        {showForm && (
-          <Box sx={{ mt: 4 }}>
-            <BookingForm onSuccess={() => { setSuccess(true); setShowForm(false); }} user={user} />
-          </Box>
-        )}
-        <Snackbar open={success} autoHideDuration={4000} onClose={() => setSuccess(false)} anchorOrigin={{ vertical: 'top', horizontal: 'center' }}>
-          <Alert severity="success" sx={{ width: '100%' }}>
-            התור נקבע בהצלחה!
+    <Container maxWidth="sm" sx={{ minHeight: '100vh', fontFamily: 'Heebo', py: 4 }}>
+      {!hasActiveAppointment && <BookingForm user={user} onSuccess={() => setSuccess(true)} />}
+      {hasActiveAppointment && activeAppointment && (
+        <Box sx={{ mt: 4, mb: 4 }}>
+          <Alert severity="error" sx={{ fontWeight: 700, mb: 2 }}>
+            כבר קבעת תור. לא ניתן לקבוע יותר מאחד.
           </Alert>
-        </Snackbar>
-      </Box>
+          <Paper sx={{ p: 3, bgcolor: '#fffde7', borderRadius: 3, boxShadow: 2, mb: 2 }}>
+            <Typography sx={{ fontWeight: 700 }}>
+              <span>תאריך: </span>{activeAppointment.date}
+            </Typography>
+            <Typography sx={{ fontWeight: 700 }}>
+              <span>שעה: </span>{activeAppointment.time}
+            </Typography>
+            <Typography><span>שם: </span>{activeAppointment.name}</Typography>
+            <Typography><span>טלפון: </span>{activeAppointment.phone}</Typography>
+          </Paper>
+        </Box>
+      )}
+      <AppointmentHistory user={user} />
     </Container>
   );
 }

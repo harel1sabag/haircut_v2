@@ -58,9 +58,19 @@ export default function BookingForm({ onSuccess, user }) {
         : query(appointmentsRef, where("name", "==", form.name));
       const snapshot = await getDocs(q);
       if (!snapshot.empty) {
-        setHasAppointment(true);
-        setError('כבר קבעת תור. לא ניתן לקבוע יותר מאחד.');
-        setAppointmentDoc({ ...snapshot.docs[0].data(), id: snapshot.docs[0].id });
+        // מנע כפילויות: מצא רק תור עתידי אחד
+        const futureAppointments = snapshot.docs
+          .map(doc => ({ ...doc.data(), id: doc.id }))
+          .filter(app => !app.done);
+        if (futureAppointments.length > 0) {
+          setHasAppointment(true);
+          setError('כבר קבעת תור. לא ניתן לקבוע יותר מאחד.');
+          setAppointmentDoc(futureAppointments[0]);
+        } else {
+          setHasAppointment(false);
+          setError('');
+          setAppointmentDoc(null);
+        }
       } else {
         setHasAppointment(false);
         setError('');
@@ -149,7 +159,10 @@ export default function BookingForm({ onSuccess, user }) {
       });
       setLoading(false);
       setForm({ name: '', phone: '', date: '', time: '' });
-      onSuccess && onSuccess();
+      if (onSuccess) onSuccess();
+      // נתק את המשתמש לאחר קביעת תור
+      const { signOut } = await import('./firebase');
+      await signOut();
     } catch (e) {
       setError('שגיאה בשליחת הטופס: ' + e.message);
       setLoading(false);
@@ -382,7 +395,25 @@ export default function BookingForm({ onSuccess, user }) {
                 אין שעות פעילות ביום זה
               </TableCell>
             )}
-            {workingHours && times.filter(time => form.date && isTimeAvailable(workingHours, form.date, time)).map((time) => (
+            {workingHours && times
+              .filter(time => {
+                if (!form.date) return false;
+                if (!isTimeAvailable(workingHours, form.date, time)) return false;
+                // אם התאריך הוא היום, אל תציג שעות שחלפו
+                const today = new Date();
+                const selectedDate = new Date(form.date);
+                if (
+                  today.toISOString().split('T')[0] === form.date
+                ) {
+                  // השווה שעה נוכחית מול הזמן
+                  const nowMinutes = today.getHours() * 60 + today.getMinutes();
+                  const [h, m] = time.split(':');
+                  const timeMinutes = parseInt(h) * 60 + parseInt(m);
+                  if (timeMinutes <= nowMinutes) return false;
+                }
+                return true;
+              })
+              .map((time) => (
               <TableCell
                 key={time}
                 align="center"

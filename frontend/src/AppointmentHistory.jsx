@@ -33,10 +33,17 @@ export default function AppointmentHistory({ user }) {
           return;
         }
         const snapshot = await getDocs(q);
-        setAppointments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        // סנן החוצה תורים שבוצעו
+        const allAppointments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setAppointments(allAppointments.filter(app => !app.done));
         setLoading(false);
       } catch (e) {
-        setError('שגיאה בטעינת היסטוריית התורים: ' + e.message);
+        // טיפול בשגיאת אינדקס של Firestore
+        if (e && typeof e.message === 'string' && e.message.toLowerCase().includes('index')) {
+          setError('יש ליצור אינדקס ב-Firebase כדי להציג את היסטוריית התורים. יש להיכנס ל-Firebase Console, ללחוץ על הקישור שנוצר בשגיאה, וליצור את האינדקס.');
+        } else {
+          setError('שגיאה בטעינת היסטוריית התורים: ' + e.message);
+        }
         setLoading(false);
       }
     };
