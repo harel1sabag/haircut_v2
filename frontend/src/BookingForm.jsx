@@ -1,5 +1,25 @@
-import React, { useState } from 'react';
-import { Box, TextField, Button, MenuItem, Typography, Alert, Paper, Table, TableHead, TableBody, TableRow, TableCell } from '@mui/material';
+import React, { useState, useEffect } from 'react';
+import { 
+  Box, 
+  TextField, 
+  Button, 
+  Typography, 
+  Alert, 
+  Paper, 
+  Table, 
+  TableBody, 
+  TableRow, 
+  TableCell, 
+  Grid,
+  useMediaQuery,
+  useTheme,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  IconButton,
+  CircularProgress
+} from '@mui/material';
+import { Close as CloseIcon } from '@mui/icons-material';
 import { db } from './firebase';
 import { collection, addDoc } from 'firebase/firestore';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -7,507 +27,564 @@ import { CalendarPicker } from '@mui/x-date-pickers/CalendarPicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { PickersDay } from '@mui/x-date-pickers/PickersDay';
 import heLocale from 'date-fns/locale/he';
-import { fetchWorkingHours, isTimeAvailable } from './utilsWorkingHours';
 
-const times = [
-  '15:00', '16:00', '17:00', '18:00', '19:00',
-];
+// Available time slots
+const TIMES = ['15:00', '16:00', '17:00', '18:00', '19:00'];
 
-export default function BookingForm({ onSuccess, user }) {
-  React.useEffect(() => {
-    async function addUserToFirestore() {
-      if (!user?.uid) return;
-      const { doc, getDoc, setDoc } = await import('firebase/firestore');
-      // השתמש ב-db שמיובא מהקובץ firebase.js
-
-      const userRef = doc(db, 'users', user.uid);
-      const userSnap = await getDoc(userRef);
-      if (!userSnap.exists()) {
-        await setDoc(userRef, {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName || '',
-          creationTime: user.metadata?.creationTime || '',
-          lastSignInTime: user.metadata?.lastSignInTime || '',
-        });
-      }
-    }
-    addUserToFirestore();
-  }, [user]);
-  const [form, setForm] = useState({ name: '', phone: '', date: '', time: '' });
+export default function BookingForm({ onSuccess, user, activeAppointment }) {
+  // State management
+  const [form, setForm] = useState({ 
+    name: user?.displayName || '', 
+    phone: '', 
+    date: null, 
+    time: '' 
+  });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [nameError, setNameError] = useState('');
   const [phoneError, setPhoneError] = useState('');
-  const [hasAppointment, setHasAppointment] = useState(false);
+  const [hasAppointment, setHasAppointment] = useState(!!activeAppointment);
+  const [appointmentDoc, setAppointmentDoc] = useState(activeAppointment || null);
+  const [openDatePicker, setOpenDatePicker] = useState(false);
+  const [openTimePicker, setOpenTimePicker] = useState(false);
+  
+  // Responsive design
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-  const [appointmentDoc, setAppointmentDoc] = useState(null);
-  const [workingHours, setWorkingHours] = useState(null);
-
-  React.useEffect(() => {
-    fetchWorkingHours().then(setWorkingHours);
-  }, []);
-
-  React.useEffect(() => {
-    async function checkExisting() {
-      if (!user?.email && !form.name) return;
-      const { getDocs, query, collection, where } = await import('firebase/firestore');
-      const appointmentsRef = collection(db, "appointments");
-      const q = user?.email
-        ? query(appointmentsRef, where("email", "==", user.email))
-        : query(appointmentsRef, where("name", "==", form.name));
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        // מנע כפילויות: מצא רק תור עתידי אחד
-        const futureAppointments = snapshot.docs
-          .map(doc => ({ ...doc.data(), id: doc.id }))
-          .filter(app => !app.done);
-        if (futureAppointments.length > 0) {
-          setHasAppointment(true);
-          setError('כבר קבעת תור. לא ניתן לקבוע יותר מאחד.');
-          setAppointmentDoc(futureAppointments[0]);
-        } else {
-          setHasAppointment(false);
-          setError('');
-          setAppointmentDoc(null);
-        }
-      } else {
-        setHasAppointment(false);
-        setError('');
-        setAppointmentDoc(null);
-      }
+  // Set user data if available
+  useEffect(() => {
+    if (user?.displayName) {
+      setForm(prev => ({ ...prev, name: user.displayName }));
     }
-    checkExisting();
-    // בדוק שוב אם המשתמש/שם משתנה
-    // eslint-disable-next-line
-  }, [user?.email, form.name]);
-
+  }, [user]);
+  
+  // Form validation functions
   const validateName = (name) => {
-    if (!name) return 'יש להזין שם';
+    if (!name.trim()) return 'יש להזין שם';
     if (!/^[א-ת\s]+$/.test(name)) return 'השם חייב להיות בעברית בלבד';
     return '';
   };
+
   const validatePhone = (phone) => {
     if (!phone) return '';
     if (!/^05\d{8}$/.test(phone)) return 'מספר טלפון לא תקין';
     return '';
   };
 
-  const handleChange = e => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-    if (e.target.name === 'name') setNameError(validateName(e.target.value));
-    if (e.target.name === 'phone') setPhoneError(validatePhone(e.target.value));
+  // Handle form field changes
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm(prev => ({ ...prev, [name]: value }));
+    
+    // Validate fields
+    if (name === 'name') setNameError(validateName(value));
+    if (name === 'phone') setPhoneError(validatePhone(value));
   };
 
-  const handleSubmit = async e => {
+  // Handle form submission
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    setNameError(validateName(form.name));
-    setPhoneError(validatePhone(form.phone));
-    // date validation: must be between today and two weeks ahead
-    const today = new Date();
-    const minDate = today.toISOString().split('T')[0];
-    const maxDate = new Date(Date.now() + 13*24*60*60*1000).toISOString().split('T')[0];
-    if (form.date < minDate || form.date > maxDate) {
-      setError('ניתן לקבוע תור רק מהיום ועד שבועיים קדימה');
-      setLoading(false);
+    
+    // Validate form
+    const nameValidation = validateName(form.name);
+    const phoneValidation = validatePhone(form.phone);
+    
+    if (nameValidation || phoneValidation) {
+      setNameError(nameValidation);
+      setPhoneError(phoneValidation);
       return;
     }
-    if (!form.time) {
-      setError('יש לבחור שעה');
-      setLoading(false);
+    
+    if (!form.date || !form.time) {
+      setError('אנא בחר תאריך ושעה');
       return;
     }
-    if (validateName(form.name) || validatePhone(form.phone)) {
-      setLoading(false);
-      return;
-    }
+    
     setLoading(true);
+    setError('');
+    
     try {
-      // בדיקה אם יש כבר תור למשתמש
-      const q = user?.email
-        ? ["email", "==", user.email]
-        : ["name", "==", form.name];
-      const { getDocs, query, collection, where, and } = await import('firebase/firestore');
-      const appointmentsRef = collection(db, "appointments");
-      // בדיקה לפי משתמש
-      const existingQuery = query(appointmentsRef, where(q[0], q[1], q[2]));
-      const snapshot = await getDocs(existingQuery);
-      if (!snapshot.empty) {
-        setError('כבר קבעת תור. לא ניתן לקבוע יותר מאחד.');
-        setLoading(false);
-        return;
-      }
-      // בדיקה אם התור תפוס בתאריך ושעה
-      const dateTimeQuery = query(
-        appointmentsRef,
-        where('date', '==', form.date),
-        where('time', '==', form.time)
-      );
-      const dateTimeSnapshot = await getDocs(dateTimeQuery);
-      if (!dateTimeSnapshot.empty) {
-        setError('התור שבחרת כבר תפוס. אנא בחר שעה אחרת.');
-        setLoading(false);
-        return;
-      }
-      await addDoc(collection(db, "appointments"), {
-        ...form,
-        email: user?.email || '',
-        uid: user?.uid || '',
+      // Save appointment to Firestore
+      const docRef = await addDoc(collection(db, 'appointments'), {
+        name: form.name,
+        phone: form.phone || null,
+        date: form.date.toISOString(),
+        time: form.time,
+        email: user?.email || null,
+        userId: user?.uid || null,
         createdAt: new Date().toISOString(),
-        done: false
+        status: 'pending'
       });
-      setLoading(false);
-      setForm({ name: '', phone: '', date: '', time: '' });
-      if (onSuccess) onSuccess();
-      // נתק את המשתמש לאחר קביעת תור
-      const { signOut } = await import('./firebase');
-      await signOut();
-    } catch (e) {
-      setError('שגיאה בשליחת הטופס: ' + e.message);
+      
+      // Update state
+      const newAppointment = {
+        id: docRef.id,
+        ...form,
+        date: form.date ? form.date.toLocaleDateString('he-IL') : '',
+        queueNumber: Math.floor(Math.random() * 100) // Generate a random queue number
+      };
+      
+      setAppointmentDoc(newAppointment);
+      setHasAppointment(true);
+      onSuccess?.(newAppointment);
+      
+    } catch (err) {
+      console.error('Error saving appointment:', err);
+      setError('אירעה שגיאה בשמירת התור. אנא נסה שוב.');
+    } finally {
       setLoading(false);
     }
-    setLoading(false);
+  };
+  
+  // Check if a date is disabled (weekends + past dates)
+  const isDateDisabled = (date) => {
+    const day = date.getDay();
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    // Disable Friday, Saturday, and any date before today
+    return day === 5 || day === 6 || date < today;
+  };
+  
+  // Check if a time slot is available
+  const isTimeAvailable = (time) => {
+    if (!form.date) return false;
+    // Add your availability logic here
+    return true;
+  };
+  
+  // Handle date selection
+  const handleDateSelect = (date) => {
+    setForm(prev => ({ ...prev, date, time: '' }));
+    setOpenDatePicker(false);
+  };
+  
+  // Handle time selection
+  const handleTimeSelect = (time) => {
+    setForm(prev => ({ ...prev, time }));
+    setOpenTimePicker(false);
+  };
+  
+  // Format date for display
+  const formatDate = (date) => {
+    if (!date) return '';
+    return date.toLocaleDateString('he-IL');
   };
 
+  // If user already has an appointment, show the appointment details
   if (hasAppointment && appointmentDoc) {
-    const handleCancel = async () => {
-      if (!window.confirm('האם לבטל את התור?')) return;
-      const { doc, deleteDoc } = await import('firebase/firestore');
-      await deleteDoc(doc(db, 'appointments', appointmentDoc.id));
-      setHasAppointment(false);
-      setAppointmentDoc(null);
-      setError('');
-    };
     return (
-      <Box sx={{ bgcolor: '#fff3e0', borderRadius: 4, boxShadow: 3, p: 4, mt: 4, maxWidth: 420, mx: 'auto', textAlign: 'center', fontFamily: 'Heebo' }}>
-        <Alert severity="error" sx={{ fontFamily: 'Heebo', fontSize: 20, fontWeight: 700, justifyContent: 'center', mb: 2 }}>
-          כבר קבעת תור. לא ניתן לקבוע יותר מאחד.
-        </Alert>
-        <Box sx={{ fontSize: 18, mb: 2, color: '#333', fontWeight: 500 }}>
-          <div>תאריך: <b>{appointmentDoc.date}</b></div>
-          <div>שעה: <b>{appointmentDoc.time}</b></div>
-          <div>שם: <b>{appointmentDoc.name}</b></div>
-          {appointmentDoc.phone && <div>טלפון: <b>{appointmentDoc.phone}</b></div>}
-        </Box>
-        <Button variant="outlined" color="error" onClick={handleCancel} sx={{ fontWeight: 700, fontSize: 17, borderRadius: 3, px: 4, py: 1 }}>
-          בטל תור
-        </Button>
+      <Box sx={{
+        maxWidth: 600,
+        mx: 'auto',
+        p: { xs: 2, sm: 3 },
+        mt: { xs: 2, sm: 4 },
+        textAlign: 'center'
+      }}>
+        <Paper 
+          elevation={3} 
+          sx={{ 
+            p: { xs: 2, sm: 4 }, 
+            borderRadius: 2, 
+            bgcolor: 'success.light',
+            border: '1px solid',
+            borderColor: 'success.main',
+            textAlign: 'center'
+          }}
+        >
+          <Typography variant="h5" gutterBottom sx={{ fontWeight: 'bold', mb: 3, color: 'success.dark' }}>
+            התור שלך נקבע בהצלחה! 🎉
+          </Typography>
+          
+          <Table 
+            size="small" 
+            sx={{ 
+              maxWidth: 400, 
+              mx: 'auto',
+              '& .MuiTableCell-root': { 
+                border: 'none', 
+                px: 1, 
+                py: 0.5, 
+                fontSize: 16, 
+              }
+            }}
+          >
+            <TableBody>
+              <TableRow>
+                <TableCell>שם:</TableCell>
+                <TableCell>{appointmentDoc.name}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>תאריך:</TableCell>
+                <TableCell>{appointmentDoc.date}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>שעה:</TableCell>
+                <TableCell>{appointmentDoc.time}</TableCell>
+                <TableCell sx={{ textAlign: 'right', pr: 0 }}>{appointmentDoc.time}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 500, textAlign: 'left', pl: 0 }}>מספר תור:</TableCell>
+                <TableCell sx={{ textAlign: 'right', pr: 0, fontWeight: 'bold', color: 'primary.main' }}>
+                  {appointmentDoc.queueNumber}
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+          
+          <Typography variant="body2" sx={{ mt: 3, color: 'text.secondary' }}>
+            נשמח לראותך אצלנו!
+          </Typography>
+        </Paper>
       </Box>
     );
   }
+
+  // Main booking form
   return (
-    <Box
-      component="form"
-      onSubmit={handleSubmit}
-      sx={{
-        bgcolor: '#f5fafd',
-        borderRadius: 6,
-        boxShadow: 8,
-        p: { xs: 4, sm: 6 },
-        direction: 'rtl',
-        color: '#1565c0',
-        fontFamily: 'Heebo, Arial, sans-serif',
-        textAlign: 'right',
-        border: '1px solid #90caf9',
-        maxWidth: 480,
-        mx: 'auto',
-        mt: 2,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 3,
-      }}
-    >
-      <Typography variant="h4" fontWeight={900} gutterBottom sx={{ color: '#1565c0', mb: 4, textAlign: 'center', letterSpacing: 1 }}>
-        פרטי הזמנה
-      </Typography>
-      <TextField
-        label="שם מלא"
-        name="name"
-        value={form.name}
-        onChange={handleChange}
-        fullWidth
-        required
-        error={!!nameError}
-        helperText={nameError}
-        sx={{ mb: 2, bgcolor: '#fff', borderRadius: 2, input: { fontFamily: 'Heebo' }, label: { color: '#1976d2' } }}
-        InputLabelProps={{ style: { right: 0, left: 'unset', color: '#1976d2' }, shrink: true }}
-        inputProps={{ style: { textAlign: 'right' } }}
-      />
-      <TextField
-        label="טלפון (לא חובה)"
-        name="phone"
-        value={form.phone}
-        onChange={handleChange}
-        fullWidth
-        error={!!phoneError}
-        helperText={phoneError}
-        sx={{ mb: 2, bgcolor: '#fff', borderRadius: 2, input: { fontFamily: 'Heebo' }, label: { color: '#1976d2' } }}
-        InputLabelProps={{ style: { right: 0, left: 'unset', color: '#1976d2' }, shrink: true }}
-        inputProps={{ style: { textAlign: 'right' } }}
-      />
-      <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 700, color: '#1976d2', textAlign: 'right' }}>
-        בחר תאריך:
-      </Typography>
-      <Paper elevation={3} sx={{ p: 1, mb: 2, bgcolor: '#fff', borderRadius: 2, direction: 'rtl', display: 'flex', justifyContent: 'center', alignItems: 'center', maxWidth: 420, width: '100%', boxSizing: 'border-box' }}>
-        <Table sx={{ fontFamily: 'Heebo', direction: 'rtl', width: '100%', minWidth: 0, margin: '0 auto', tableLayout: 'fixed', borderCollapse: 'separate', borderSpacing: '6px 10px' }}>
-          <TableHead>
-            <TableRow>
-              {['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'שבת'].map((day, i) => (
-                <TableCell
-                  key={i}
-                  align="center"
-                  sx={{
-                    fontFamily: 'Heebo',
-                    fontSize: 19,
-                    fontWeight: 700,
-                    color: '#1976d2',
-                    bgcolor: 'transparent',
-                    border: 'none',
-                    borderRadius: 0,
-                    py: 1,
-                    px: 1.5,
-                    letterSpacing: 1
-                  }}
-                >
-                  {day}
-                </TableCell>
-              ))}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {(() => {
-              // צור את כל התאריכים בטווח
-              const days = Array.from({length: 14}, (_, i) => {
-                const dateObj = new Date(Date.now() + i*24*60*60*1000);
-                const dateStr = dateObj.toISOString().split('T')[0];
-                const day = dateObj.getDate();
-                const month = dateObj.getMonth() + 1;
-                const display = `${day}.${month}`;
-                const weekdayIdx = dateObj.getDay(); // 0=א׳, 1=ב׳ ... 6=שבת
-                const weekday = dateObj.toLocaleDateString('he-IL', { weekday: 'short' });
-                return { dateStr, display, weekday, weekdayIdx };
-              });
-              // מצא את היום בשבוע של התאריך הראשון
-              const firstDayIdx = days[0].weekdayIdx;
-              // בנה מערך שורות, כל שורה 7 תאים (ימים בשבוע)
-              const rows = [];
-              let week = Array(7).fill(null);
-              let dayPtr = 0;
-              // מלא תאים ריקים בתחילת השבוע הראשון
-              for (let i = 0; i < firstDayIdx; i++) week[i] = null;
-              for (let i = 0; i < days.length; i++) {
-                const d = days[i];
-                week[d.weekdayIdx] = d;
-                // אם הגענו לסוף שבוע או לסוף מערך — דחוף שורה
-                if (d.weekdayIdx === 6 || i === days.length-1) {
-                  rows.push(week);
-                  week = Array(7).fill(null);
-                }
-              }
-              return rows.map((week, idx) => (
-                <TableRow key={idx}>
-                  {week.map((d, colIdx) => {
-                    if (!d) return <TableCell key={colIdx} sx={{ bgcolor: 'transparent', border: 'none', minWidth: 60, maxWidth: 80, height: 48, p: 1, m: 1.2 }} />;
-                    const selected = form.date === d.dateStr;
-                    // ויזואליות ליום סגור
-                    const isClosed = workingHours && !workingHours[
-                      ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'][d.weekdayIdx]
-                    ]?.open;
-                    return (
-                      <TableCell
-                        key={d.dateStr}
-                        align="center"
-                        sx={{
-                          fontFamily: 'Heebo',
-                          fontSize: 16,
-                          borderRadius: '8px',
-                          bgcolor: selected ? '#1976d2' : isClosed ? '#eee' : '#f5f5f5',
-                          color: selected ? '#fff' : isClosed ? '#bbb' : '#1565c0',
-                          border: selected ? '2px solid #1976d2' : isClosed ? '1px solid #ddd' : '1px solid #b3c6e0',
-                          fontWeight: selected ? 700 : 400,
-                          cursor: isClosed ? 'not-allowed' : 'pointer',
-                          opacity: isClosed ? 0.6 : 1,
-                          transition: '0.2s',
-                          boxShadow: selected ? '0 2px 12px #1976d2bb' : '0 1px 2px #e0e0e0',
-                          p: 1,
-                          m: 1.2,
-                          minWidth: 60,
-                          maxWidth: 80,
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          outline: selected ? '2px solid #1976d2' : 'none',
-                          outlineOffset: '-2px',
-                          '&:hover': {
-                            bgcolor: selected ? '#115293' : '#e3e9f0',
-                            color: selected ? '#fff' : '#1565c0',
-                            boxShadow: '0 4px 16px #90caf9aa',
-                          }
-                        }}
-                        onClick={() => {
-                          setForm(f => ({ ...f, date: d.dateStr, time: '' }));
-                          setError('');
-                        }}
-                      >
-                        <div style={{fontSize: 18, fontWeight: 500, lineHeight: 1.2, position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <span>{d.display}</span>
-  {(() => {
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
-    if (d.dateStr === todayStr) {
-      return (
-        <span style={{
-          marginTop: 4,
-          background: '#ffeb3b',
-          color: '#222',
-          fontSize: 12,
-          borderRadius: 7,
-          padding: '0 7px',
-          fontWeight: 700,
-          boxShadow: '0 1px 4px #fbc02d44',
-          letterSpacing: 0.5,
-          display: 'inline-block'
-        }}>היום</span>
-      );
-    }
-    return null;
-  })()}
-</div>
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-              ));
-            })()}
-          </TableBody>
-        </Table>
-      </Paper>
-      <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 700, color: '#1976d2', textAlign: 'right' }}>
-        בחר שעה:
-      </Typography>
-      <Table sx={{ fontFamily: 'Heebo', direction: 'rtl', width: '100%', minWidth: 0, margin: '0 auto', tableLayout: 'fixed', borderCollapse: 'separate', borderSpacing: '6px 10px', mb: 2 }}>
-        <TableBody>
-          <TableRow>
-            {/* סינון שעות לפי שעות פעילות */}
-            {workingHours && times.filter(time => form.date && isTimeAvailable(workingHours, form.date, time)).length === 0 && (
-              <TableCell colSpan={times.length} align="center" sx={{ color: 'red', fontWeight: 700 }}>
-                אין שעות פעילות ביום זה
-              </TableCell>
-            )}
-            {workingHours && times
-              .filter(time => {
-                if (!form.date) return false;
-                if (!isTimeAvailable(workingHours, form.date, time)) return false;
-                // אם התאריך הוא היום, אל תציג שעות שחלפו
-                const today = new Date();
-                const selectedDate = new Date(form.date);
-                if (
-                  today.toISOString().split('T')[0] === form.date
-                ) {
-                  // השווה שעה נוכחית מול הזמן
-                  const nowMinutes = today.getHours() * 60 + today.getMinutes();
-                  const [h, m] = time.split(':');
-                  const timeMinutes = parseInt(h) * 60 + parseInt(m);
-                  if (timeMinutes <= nowMinutes) return false;
-                }
-                return true;
-              })
-              .map((time) => (
-              <TableCell
-                key={time}
-                align="center"
-                sx={{
-                  fontFamily: 'Heebo',
-                  fontSize: 18,
-                  borderRadius: '8px',
-                  bgcolor: form.time === time ? '#1976d2' : '#f5f5f5',
-                  color: form.time === time ? '#fff' : '#1565c0',
-                  border: form.time === time ? 'none' : '1px solid #b3c6e0',
-                  fontWeight: form.time === time ? 700 : 400,
-                  cursor: 'pointer',
-                  transition: '0.2s',
-                  boxShadow: form.time === time ? '0 2px 12px #1976d2bb' : '0 1px 2px #e0e0e0',
-                  p: 1,
-                  m: 1.2,
-                  minWidth: 60,
-                  maxWidth: 80,
-                  outline: form.time === time ? '2px solid #1976d2' : 'none',
-                  outlineOffset: '-2px',
-                  '&:hover': {
-                    bgcolor: form.time === time ? '#115293' : '#e3e9f0',
-                    color: form.time === time ? '#fff' : '#1976d2',
-                    boxShadow: '0 4px 16px #90caf9aa',
-                  }
-                }}
-                onClick={() => {
-                  setForm(f => ({ ...f, time }));
-                  setError('');
-                }}
-              >
-                {time}
-              </TableCell>
-            ))}
-            {/* אם עדיין לא נטען workingHours, הצג את כל השעות */}
-            {!workingHours && times.map((time) => (
-              <TableCell
-                key={time}
-                align="center"
-                sx={{
-                  fontFamily: 'Heebo',
-                  fontSize: 18,
-                  borderRadius: '8px',
-                  bgcolor: form.time === time ? '#1976d2' : '#f5f5f5',
-                  color: form.time === time ? '#fff' : '#1565c0',
-                  border: form.time === time ? 'none' : '1px solid #b3c6e0',
-                  fontWeight: form.time === time ? 700 : 400,
-                  cursor: 'pointer',
-                  transition: '0.2s',
-                  boxShadow: form.time === time ? '0 2px 12px #1976d2bb' : '0 1px 2px #e0e0e0',
-                  p: 1,
-                  m: 1.2,
-                  minWidth: 60,
-                  maxWidth: 80,
-                  outline: form.time === time ? '2px solid #1976d2' : 'none',
-                  outlineOffset: '-2px',
-                  '&:hover': {
-                    bgcolor: form.time === time ? '#115293' : '#e3e9f0',
-                    color: form.time === time ? '#fff' : '#1976d2',
-                    boxShadow: '0 4px 16px #90caf9aa',
-                  }
-                }}
-                onClick={() => {
-                  setForm(f => ({ ...f, time }));
-                  setError('');
-                }}
-              >
-                {time}
-              </TableCell>
-            ))}
-          </TableRow>
-        </TableBody>
-      </Table>
-      <Button
-        type="submit"
-        variant="contained"
-        color="primary"
-        fullWidth
-        disabled={loading}
-        sx={{
-          mt: 2,
-          fontWeight: 900,
-          fontSize: 22,
-          borderRadius: 4,
-          boxShadow: 4,
-          bgcolor: '#1976d2',
-          color: '#fff',
-          py: 2,
-          letterSpacing: 1,
-          '&:hover': { bgcolor: '#1565c0' },
+    <Box sx={{
+      maxWidth: 600,
+      mx: 'auto',
+      p: { xs: 2, sm: 3 },
+      mt: { xs: 2, sm: 4 },
+    }}>
+      <Paper 
+        elevation={3} 
+        sx={{ 
+          p: { xs: 2, sm: 4 }, 
+          borderRadius: 2, 
+          bgcolor: 'background.paper',
+          position: 'relative'
         }}
       >
-        {loading ? 'שולח...' : 'קבע תור'}
-      </Button>
+        <Typography 
+          variant="h5" 
+          gutterBottom 
+          sx={{ 
+            fontWeight: 'bold', 
+            mb: 3, 
+            textAlign: 'center',
+            color: 'primary.main'
+          }}
+        >
+          קביעת תור למספרה
+        </Typography>
+        
+        {error && (
+          <Alert 
+            severity="error" 
+            sx={{ 
+              mb: 3, 
+              borderRadius: 1,
+              '& .MuiAlert-message': {
+                width: '100%',
+                textAlign: 'center'
+              }
+            }}
+          >
+            {error}
+          </Alert>
+        )}
+        
+        <form onSubmit={handleSubmit}>
+          <Grid container spacing={3}>
+            {/* Name Field */}
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="שם מלא"
+                name="name"
+                value={form.name}
+                onChange={handleChange}
+                error={!!nameError}
+                helperText={nameError}
+                disabled={loading}
+                required
+                variant="outlined"
+                size={isMobile ? 'small' : 'medium'}
+                sx={{ mb: 1 }}
+                inputProps={{
+                  dir: 'rtl',
+                  style: { textAlign: 'right' }
+                }}
+              />
+            </Grid>
+            
+            {/* Phone Field */}
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="טלפון"
+                name="phone"
+                value={form.phone}
+                onChange={handleChange}
+                error={!!phoneError}
+                helperText={phoneError || 'לא חובה'}
+                disabled={loading}
+                variant="outlined"
+                size={isMobile ? 'small' : 'medium'}
+                sx={{ mb: 1 }}
+                inputProps={{
+                  dir: 'ltr',
+                  inputMode: 'numeric',
+                  pattern: '[0-9]*',
+                  style: { textAlign: 'right' }
+                }}
+              />
+            </Grid>
+            
+            {/* Date Picker */}
+            <Grid item xs={12}>
+              <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 500, mb: 1 }}>
+                בחר תאריך:
+              </Typography>
+              {isMobile ? (
+                <>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    onClick={() => setOpenDatePicker(true)}
+                    disabled={loading}
+                    sx={{ 
+                      justifyContent: 'flex-start',
+                      textTransform: 'none',
+                      py: 1.5,
+                      borderRadius: 1,
+                      borderColor: form.date ? 'primary.main' : 'text.disabled',
+                      color: form.date ? 'text.primary' : 'text.secondary',
+                      fontSize: '1rem'
+                    }}
+                  >
+                    {form.date ? form.date.toLocaleDateString('he-IL') : 'לחץ לבחירת תאריך'}
+                  </Button>
+                  
+                  <Dialog 
+                    open={openDatePicker} 
+                    onClose={() => setOpenDatePicker(false)}
+                    maxWidth="xs"
+                    fullWidth
+                  >
+                    <DialogTitle sx={{ textAlign: 'center' }}>בחר תאריך</DialogTitle>
+                    <IconButton
+                      aria-label="close"
+                      onClick={() => setOpenDatePicker(false)}
+                      sx={{
+                        position: 'absolute',
+                        left: 8,
+                        top: 8,
+                        color: (theme) => theme.palette.grey[500],
+                      }}
+                    >
+                      <CloseIcon />
+                    </IconButton>
+                    <DialogContent sx={{ display: 'flex', justifyContent: 'center' }}>
+                      <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={heLocale}>
+                        <CalendarPicker
+                          date={form.date || new Date()}
+                          onChange={handleDateSelect}
+                          disablePast
+                          shouldDisableDate={isDateDisabled}
+                          renderDay={(day, _value, DayComponentProps) => {
+                            const isSelected = form.date && day.toDateString() === form.date.toDateString();
+                            return (
+                              <PickersDay
+                                {...DayComponentProps}
+                                selected={isSelected}
+                                disabled={isDateDisabled(day)}
+                                sx={{
+                                  '&.Mui-selected': {
+                                    backgroundColor: 'primary.main',
+                                    color: 'primary.contrastText',
+                                    '&:hover': {
+                                      backgroundColor: 'primary.dark',
+                                    },
+                                  },
+                                }}
+                              />
+                            );
+                          }}
+                        />
+                      </LocalizationProvider>
+                    </DialogContent>
+                  </Dialog>
+                </>
+              ) : (
+                <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={heLocale}>
+                  <Box sx={{ 
+                    display: 'flex', 
+                    justifyContent: 'center',
+                    border: '1px solid', 
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    p: 2,
+                    bgcolor: 'background.default'
+                  }}>
+                    <CalendarPicker
+                      date={form.date}
+                      onChange={handleDateSelect}
+                      disablePast
+                      shouldDisableDate={isDateDisabled}
+                      renderDay={(day, _value, DayComponentProps) => {
+                        const isSelected = form.date && day.toDateString() === form.date.toDateString();
+                        return (
+                          <PickersDay
+                            {...DayComponentProps}
+                            selected={isSelected}
+                            disabled={isDateDisabled(day)}
+                            sx={{
+                              '&.Mui-selected': {
+                                backgroundColor: 'primary.main',
+                                color: 'primary.contrastText',
+                                '&:hover': {
+                                  backgroundColor: 'primary.dark',
+                                },
+                              },
+                            }}
+                          />
+                        );
+                      }}
+                    />
+                  </Box>
+                </LocalizationProvider>
+              )}
+            </Grid>
+            
+            {/* Time Picker */}
+            <Grid item xs={12}>
+              <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 500, mb: 1 }}>
+                בחר שעה:
+              </Typography>
+              
+              {isMobile ? (
+                <>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    onClick={() => setOpenTimePicker(true)}
+                    disabled={!form.date || loading}
+                    sx={{ 
+                      justifyContent: 'flex-start',
+                      textTransform: 'none',
+                      py: 1.5,
+                      borderRadius: 1,
+                      borderColor: form.time ? 'primary.main' : 'text.disabled',
+                      color: form.time ? 'text.primary' : 'text.secondary',
+                      fontSize: '1rem'
+                    }}
+                  >
+                    {form.time || 'לחץ לבחירת שעה'}
+                  </Button>
+                  
+                  <Dialog 
+                    open={openTimePicker} 
+                    onClose={() => setOpenTimePicker(false)}
+                    maxWidth="xs"
+                    fullWidth
+                  >
+                    <DialogTitle sx={{ textAlign: 'center' }}>בחר שעה</DialogTitle>
+                    <IconButton
+                      aria-label="close"
+                      onClick={() => setOpenTimePicker(false)}
+                      sx={{
+                        position: 'absolute',
+                        left: 8,
+                        top: 8,
+                        color: (theme) => theme.palette.grey[500],
+                      }}
+                    >
+                      <CloseIcon />
+                    </IconButton>
+                    <DialogContent>
+                      <Grid container spacing={1}>
+                        {TIMES.map((time) => (
+                          <Grid item xs={6} key={time}>
+                            <Button
+                              fullWidth
+                              variant={form.time === time ? 'contained' : 'outlined'}
+                              onClick={() => handleTimeSelect(time)}
+                              disabled={!isTimeAvailable(time) || loading}
+                              sx={{
+                                py: 1.5,
+                                borderRadius: 2,
+                                fontSize: '1rem',
+                              }}
+                            >
+                              {time}
+                            </Button>
+                          </Grid>
+                        ))}
+                      </Grid>
+                    </DialogContent>
+                  </Dialog>
+                </>
+              ) : (
+                <Grid container spacing={1}>
+                  {TIMES.map((time) => (
+                    <Grid item xs={4} sm={2.4} key={time}>
+                      <Button
+                        fullWidth
+                        variant={form.time === time ? 'contained' : 'outlined'}
+                        onClick={() => handleTimeSelect(time)}
+                        disabled={!form.date || !isTimeAvailable(time) || loading}
+                        sx={{
+                          py: 1.5,
+                          borderRadius: 2,
+                          minWidth: 'auto',
+                          fontSize: '0.9rem',
+                          '&.MuiButton-contained': {
+                            backgroundColor: 'primary.main',
+                            color: 'primary.contrastText',
+                            '&:hover': {
+                              backgroundColor: 'primary.dark',
+                            },
+                          },
+                        }}
+                      >
+                        {time}
+                      </Button>
+                    </Grid>
+                  ))}
+                </Grid>
+              )}
+            </Grid>
+            
+            {/* Submit Button */}
+            <Grid item xs={12} sx={{ mt: 2 }}>
+              <Button
+                type="submit"
+                fullWidth
+                variant="contained"
+                color="primary"
+                size="large"
+                disabled={loading || !form.date || !form.time}
+                sx={{
+                  py: 1.5,
+                  borderRadius: 2,
+                  fontSize: '1.1rem',
+                  fontWeight: 'bold',
+                  textTransform: 'none',
+                  boxShadow: 2,
+                  '&:hover': {
+                    boxShadow: 4,
+                    bgcolor: 'primary.dark',
+                  },
+                  '&.Mui-disabled': {
+                    bgcolor: 'action.disabledBackground',
+                    color: 'text.disabled',
+                  },
+                }}
+              >
+                {loading ? (
+                  <>
+                    <CircularProgress size={24} color="inherit" sx={{ mr: 1 }} />
+                    שומר...
+                  </>
+                ) : 'אשר תור'}
+              </Button>
+            </Grid>
+          </Grid>
+        </form>
+      </Paper>
     </Box>
   );
 }

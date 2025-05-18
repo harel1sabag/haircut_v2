@@ -13,6 +13,19 @@ export default function AdminPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [users, setUsers] = useState([]);
+  const [completedAppointments, setCompletedAppointments] = useState([]);
+
+  useEffect(() => {
+    const fetchCompletedAppointments = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, 'completed_appointments'));
+        setCompletedAppointments(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } catch (e) {
+        setError('שגיאה בטעינת תורים שבוצעו: ' + e.message);
+      }
+    };
+    fetchCompletedAppointments();
+  }, []);
 
   useEffect(() => {
     const fetchAppointments = async () => {
@@ -33,10 +46,20 @@ export default function AdminPanel() {
         setError('שגיאה בטעינת המשתמשים: ' + e.message);
       }
     };
-
     fetchAppointments();
     fetchUsers();
   }, []);
+
+  const handleDeleteCompleted = async (id) => {
+    if (!window.confirm('האם למחוק את התור שבוצע?')) return;
+    try {
+      const { doc, deleteDoc } = await import('firebase/firestore');
+      await deleteDoc(doc(db, 'completed_appointments', id));
+      setCompletedAppointments(apps => apps.filter(a => a.id !== id));
+    } catch (e) {
+      setError('שגיאה במחיקת תור שבוצע: ' + e.message);
+    }
+  };
 
   const handleDelete = async (id) => {
     if (!window.confirm('האם למחוק את התור?')) return;
@@ -49,13 +72,12 @@ export default function AdminPanel() {
     }
   };
 
-  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress /></Box>;
-  if (error) return <Typography color="error" sx={{ mt: 2 }}>{error}</Typography>;
-
-  // חישוב שבוע אחרון
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const doneLastWeek = appointments.filter(a => a.done && a.createdAt && new Date(a.createdAt) >= weekAgo);
+  const doneLastWeek = completedAppointments.filter(a => a.completedAt && new Date(a.completedAt) >= weekAgo);
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress /></Box>;
+  if (error) return <Typography color="error" sx={{ mt: 2 }}>{error}</Typography>;
 
   return (
     <Box sx={{ mt: 4, mb: 4 }}>
@@ -107,9 +129,9 @@ export default function AdminPanel() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                   users.map(user => {
+                  users.map(user => {
                     // חישוב כמות תורים שבוצעו לפי אימייל
-                    const userAppointments = appointments.filter(app => app.email === user.email && app.done);
+                    const userAppointments = completedAppointments.filter(app => app.email === user.email);
                     return (
                       <TableRow key={user.id}>
                         <TableCell align="right">{user.displayName || user.name || '-'}</TableCell>
@@ -159,9 +181,19 @@ export default function AdminPanel() {
                         size="small"
                         sx={{ fontWeight: 700, px: 2, minWidth: 0 }}
                         onClick={async () => {
-                          const { updateDoc, doc } = await import('firebase/firestore');
-                          await updateDoc(doc(db, 'appointments', row.id), { done: true });
-                          setAppointments(apps => apps.map(a => a.id === row.id ? { ...a, done: true } : a));
+                          const { getDoc, setDoc, deleteDoc, doc } = await import('firebase/firestore');
+                          const appointmentRef = doc(db, 'appointments', row.id);
+                          const appointmentSnap = await getDoc(appointmentRef);
+                          if (appointmentSnap.exists()) {
+                            const appointmentData = appointmentSnap.data();
+                            await setDoc(doc(db, 'completed_appointments', row.id), {
+                              ...appointmentData,
+                              done: true,
+                              completedAt: new Date().toISOString(),
+                            });
+                            await deleteDoc(appointmentRef);
+                            setAppointments(apps => apps.filter(a => a.id !== row.id));
+                          }
                         }}
                       >
                         {row.done ? '✔' : 'סמן בוצע'}
@@ -192,12 +224,13 @@ export default function AdminPanel() {
                   <TableCell align="right" sx={{ fontSize: 13 }}>שעה</TableCell>
                   <TableCell align="right" sx={{ fontSize: 13 }}>אימייל</TableCell>
                   <TableCell align="right" sx={{ fontSize: 13 }}>נוצר בתאריך</TableCell>
+                  <TableCell align="right" sx={{ fontSize: 13 }}>מחיקה</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {doneLastWeek.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} align="center" sx={{ color: '#888' }}>
+                    <TableCell colSpan={7} align="center" sx={{ color: '#888' }}>
                       אין תורים שבוצעו בשבוע האחרון
                     </TableCell>
                   </TableRow>
@@ -210,6 +243,11 @@ export default function AdminPanel() {
                       <TableCell align="right">{row.time}</TableCell>
                       <TableCell align="right">{row.email}</TableCell>
                       <TableCell align="right">{row.createdAt ? new Date(row.createdAt).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' }) : '-'}</TableCell>
+                      <TableCell align="right">
+                        <IconButton color="error" onClick={() => handleDeleteCompleted(row.id)} size="small">
+                          <DeleteIcon />
+                        </IconButton>
+                      </TableCell>
                     </TableRow>
                   ))
                 )}

@@ -24,3 +24,6 @@ Thumbs.db
 # Misc
 *.local
 backend/appointments.db
+
+# Local Netlify folder
+.netlify
