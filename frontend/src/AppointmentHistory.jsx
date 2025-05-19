@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { db } from './firebase';
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, CircularProgress, Box } from '@mui/material';
+import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, CircularProgress, Box, Button } from '@mui/material';
+
+import { auth } from './firebase';
+import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 
 export default function AppointmentHistory({ user }) {
   const [appointments, setAppointments] = useState([]);
@@ -54,9 +57,31 @@ export default function AppointmentHistory({ user }) {
 
   return (
     <Box sx={{ mt: 4, mb: 4 }}>
-      <Typography variant="h5" sx={{ fontWeight: 700, color: '#1976d2', mb: 2 }}>
-        היסטוריית תורים
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, justifyContent: 'space-between' }}>
+        <Typography variant="h5" sx={{ fontWeight: 700, color: '#1976d2' }}>
+          היסטוריית תורים
+        </Typography>
+        {user && (
+          <Button
+            variant="contained"
+            color="error"
+            fullWidth
+            size="large"
+            startIcon={<ExitToAppIcon />}
+            onClick={() => auth.signOut()}
+            sx={{
+              fontWeight: 700,
+              borderRadius: 2,
+              py: 1.5,
+              fontSize: { xs: 16, sm: 18 },
+              boxShadow: 2,
+              mt: 1
+            }}
+          >
+            התנתק
+          </Button>
+        )}
+      </Box>
       {loading ? (
         <CircularProgress />
       ) : error ? (
@@ -77,7 +102,7 @@ export default function AppointmentHistory({ user }) {
             <TableBody>
               {appointments.map(app => (
                 <TableRow key={app.id}>
-                  <TableCell>{app.date}</TableCell>
+                  <TableCell>{app.date ? new Date(app.date).toLocaleDateString('he-IL', { year: 'numeric', month: '2-digit', day: '2-digit' }) : ''}</TableCell>
                   <TableCell>{app.time}</TableCell>
                   <TableCell>{app.name}</TableCell>
                   <TableCell>{app.phone}</TableCell>

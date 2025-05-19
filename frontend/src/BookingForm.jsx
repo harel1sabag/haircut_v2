@@ -23,9 +23,9 @@ import { Close as CloseIcon } from '@mui/icons-material';
 import { db } from './firebase';
 import { collection, addDoc } from 'firebase/firestore';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { CalendarPicker } from '@mui/x-date-pickers/CalendarPicker';
+
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { PickersDay } from '@mui/x-date-pickers/PickersDay';
+
 import heLocale from 'date-fns/locale/he';
 
 // Available time slots
@@ -138,12 +138,12 @@ export default function BookingForm({ onSuccess, user, activeAppointment }) {
   };
   
   // Check if a date is disabled (weekends + past dates)
+  const ALLOWED_DAYS = [0, 2, 3];
   const isDateDisabled = (date) => {
     const day = date.getDay();
     const today = new Date();
     today.setHours(0,0,0,0);
-    // Disable Friday, Saturday, and any date before today
-    return day === 5 || day === 6 || date < today;
+    return !ALLOWED_DAYS.includes(day) || date < today;
   };
   
   // Check if a time slot is available
@@ -200,34 +200,29 @@ export default function BookingForm({ onSuccess, user, activeAppointment }) {
             size="small" 
             sx={{ 
               maxWidth: 400, 
-              mx: 'auto',
-              '& .MuiTableCell-root': { 
-                border: 'none', 
-                px: 1, 
-                py: 0.5, 
-                fontSize: 16, 
-              }
+              margin: '0 auto', 
+              mb: 2, 
+              background: 'none', 
+              boxShadow: 'none', 
+              border: 'none' 
             }}
           >
             <TableBody>
               <TableRow>
-                <TableCell>שם:</TableCell>
-                <TableCell>{appointmentDoc.name}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>תאריך:</TableCell>
+                <TableCell>{appointmentDoc?.date}</TableCell>
               </TableRow>
               <TableRow>
-                <TableCell>תאריך:</TableCell>
-                <TableCell>{appointmentDoc.date}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>שעה:</TableCell>
+                <TableCell>{appointmentDoc?.time}</TableCell>
               </TableRow>
               <TableRow>
-                <TableCell>שעה:</TableCell>
-                <TableCell>{appointmentDoc.time}</TableCell>
-                <TableCell sx={{ textAlign: 'right', pr: 0 }}>{appointmentDoc.time}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>שם:</TableCell>
+                <TableCell>{appointmentDoc?.name}</TableCell>
               </TableRow>
               <TableRow>
-                <TableCell sx={{ fontWeight: 500, textAlign: 'left', pl: 0 }}>מספר תור:</TableCell>
-                <TableCell sx={{ textAlign: 'right', pr: 0, fontWeight: 'bold', color: 'primary.main' }}>
-                  {appointmentDoc.queueNumber}
-                </TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>טלפון:</TableCell>
+                <TableCell>{appointmentDoc?.phone}</TableCell>
               </TableRow>
             </TableBody>
           </Table>
@@ -379,31 +374,10 @@ export default function BookingForm({ onSuccess, user, activeAppointment }) {
                     </IconButton>
                     <DialogContent sx={{ display: 'flex', justifyContent: 'center' }}>
                       <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={heLocale}>
-                        <CalendarPicker
-                          date={form.date || new Date()}
-                          onChange={handleDateSelect}
-                          disablePast
-                          shouldDisableDate={isDateDisabled}
-                          renderDay={(day, _value, DayComponentProps) => {
-                            const isSelected = form.date && day.toDateString() === form.date.toDateString();
-                            return (
-                              <PickersDay
-                                {...DayComponentProps}
-                                selected={isSelected}
-                                disabled={isDateDisabled(day)}
-                                sx={{
-                                  '&.Mui-selected': {
-                                    backgroundColor: 'primary.main',
-                                    color: 'primary.contrastText',
-                                    '&:hover': {
-                                      backgroundColor: 'primary.dark',
-                                    },
-                                  },
-                                }}
-                              />
-                            );
-                          }}
-                        />
+                        <CustomMonthCalendar
+  value={form.date}
+  onChange={handleDateSelect}
+/>
                       </LocalizationProvider>
                     </DialogContent>
                   </Dialog>
