@@ -483,33 +483,39 @@ export default function BookingForm({ onSuccess, user, activeAppointment }) {
                   </Dialog>
                 </>
               ) : (
-                <Grid container spacing={1}>
-                  {TIMES.map((time) => (
-                    <Grid item xs={4} sm={2.4} key={time}>
-                      <Button
-                        fullWidth
-                        variant={form.time === time ? 'contained' : 'outlined'}
-                        onClick={() => handleTimeSelect(time)}
-                        disabled={!form.date || !isTimeAvailable(time) || loading}
-                        sx={{
-                          py: 1.5,
-                          borderRadius: 2,
-                          minWidth: 'auto',
-                          fontSize: '0.9rem',
-                          '&.MuiButton-contained': {
-                            backgroundColor: 'primary.main',
-                            color: 'primary.contrastText',
-                            '&:hover': {
-                              backgroundColor: 'primary.dark',
+                times.length === 0 ? (
+                  <Typography color="text.secondary" sx={{ width: '100%', textAlign: 'center', py: 3 }}>
+                    אין שעות פעילות ליום זה
+                  </Typography>
+                ) : (
+                  <Grid container spacing={1}>
+                    {times.map((time) => (
+                      <Grid item xs={4} sm={2.4} key={time}>
+                        <Button
+                          fullWidth
+                          variant={form.time === time ? 'contained' : 'outlined'}
+                          onClick={() => handleTimeSelect(time)}
+                          disabled={!form.date || !isTimeAvailable(time) || loading}
+                          sx={{
+                            py: 1.5,
+                            borderRadius: 2,
+                            minWidth: 'auto',
+                            fontSize: '0.9rem',
+                            '&.MuiButton-contained': {
+                              backgroundColor: 'primary.main',
+                              color: 'primary.contrastText',
+                              '&:hover': {
+                                backgroundColor: 'primary.dark',
+                              },
                             },
-                          },
-                        }}
-                      >
-                        {time}
-                      </Button>
-                    </Grid>
-                  ))}
-                </Grid>
+                          }}
+                        >
+                          {time}
+                        </Button>
+                      </Grid>
+                    ))}
+                  </Grid>
+                )
               )}
             </Grid>
             
