@@ -23,13 +23,15 @@ import { Close as CloseIcon } from '@mui/icons-material';
 import { db } from './firebase';
 import { collection, addDoc } from 'firebase/firestore';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-
 import heLocale from 'date-fns/locale/he';
+import CustomMonthCalendar from './CustomMonthCalendar';
+import './CustomMonthCalendar.css';
+import { fetchWorkingHours } from './utilsWorkingHours';
 
-// Available time slots
-const TIMES = ['15:00', '16:00', '17:00', '18:00', '19:00'];
+// שעות העבודה של האדמין
+const dayKeys = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+
 
 export default function BookingForm({ onSuccess, user, activeAppointment }) {
   // State management
@@ -45,6 +47,44 @@ export default function BookingForm({ onSuccess, user, activeAppointment }) {
   const [phoneError, setPhoneError] = useState('');
   const [hasAppointment, setHasAppointment] = useState(!!activeAppointment);
   const [appointmentDoc, setAppointmentDoc] = useState(activeAppointment || null);
+  const [workingHours, setWorkingHours] = useState(null);
+  const [times, setTimes] = useState([]);
+
+  useEffect(() => {
+    fetchWorkingHours().then(hours => setWorkingHours(hours));
+  }, []);
+
+  // עדכן את רשימת השעות בכל פעם שנבחר תאריך
+  useEffect(() => {
+    if (!form.date || !workingHours) {
+      setTimes([]);
+      return;
+    }
+    const dayIdx = form.date.getDay();
+    const key = dayKeys[dayIdx];
+    const hours = workingHours[key];
+    if (!hours || !hours.open || !hours.from || !hours.to) {
+      setTimes([]);
+      return;
+    }
+    // צור מערך של כל השעות הרבע/חצי שעה בטווח
+    const slots = [];
+    let [fromH, fromM] = hours.from.split(':').map(Number);
+    let [toH, toM] = hours.to.split(':').map(Number);
+    let current = new Date(form.date);
+    current.setHours(fromH, fromM, 0, 0);
+    const end = new Date(form.date);
+    end.setHours(toH, toM, 0, 0);
+    while (current <= end) {
+      const h = String(current.getHours()).padStart(2, '0');
+      const m = String(current.getMinutes()).padStart(2, '0');
+      slots.push(`${h}:${m}`);
+      // אפשר לשנות ל-30 דקות או 15 דקות
+      current.setMinutes(current.getMinutes() + 30);
+    }
+    setTimes(slots);
+  }, [form.date, workingHours]);
+
   const [openDatePicker, setOpenDatePicker] = useState(false);
   const [openTimePicker, setOpenTimePicker] = useState(false);
   
@@ -85,26 +125,40 @@ export default function BookingForm({ onSuccess, user, activeAppointment }) {
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    // Validate form
-    const nameValidation = validateName(form.name);
-    const phoneValidation = validatePhone(form.phone);
-    
-    if (nameValidation || phoneValidation) {
-      setNameError(nameValidation);
-      setPhoneError(phoneValidation);
-      return;
-    }
-    
-    if (!form.date || !form.time) {
-      setError('אנא בחר תאריך ושעה');
-      return;
-    }
-    
-    setLoading(true);
-    setError('');
-    
     try {
+      // הגנות על ערכי הטופס
+      if (!form || typeof form !== 'object') throw new Error('form state is invalid');
+      if (!form.date || isNaN(new Date(form.date))) {
+        setError('תאריך לא תקין');
+        return;
+      }
+      if (!form.time || typeof form.time !== 'string' || !/^[0-2][0-9]:[0-5][0-9]$/.test(form.time)) {
+        setError('שעה לא תקינה');
+        return;
+      }
+
+      // Validate form
+      const nameValidation = validateName(form.name);
+      const phoneValidation = validatePhone(form.phone);
+      if (nameValidation || phoneValidation) {
+        setNameError(nameValidation);
+        setPhoneError(phoneValidation);
+        return;
+      }
+
+      // מניעת קביעת תור לעבר
+      const now = new Date();
+      const selectedDate = new Date(form.date);
+      const [h, m] = form.time.split(':').map(Number);
+      selectedDate.setHours(h, m, 0, 0);
+      if (selectedDate < now) {
+        setError('לא ניתן לקבוע תור לעבר');
+        return;
+      }
+
+      setLoading(true);
+      setError('');
+
       // Save appointment to Firestore
       const docRef = await addDoc(collection(db, 'appointments'), {
         name: form.name,
@@ -116,27 +170,25 @@ export default function BookingForm({ onSuccess, user, activeAppointment }) {
         createdAt: new Date().toISOString(),
         status: 'pending'
       });
-      
+
       // Update state
       const newAppointment = {
         id: docRef.id,
         ...form,
         date: form.date ? form.date.toLocaleDateString('he-IL') : '',
-        queueNumber: Math.floor(Math.random() * 100) // Generate a random queue number
+        queueNumber: Math.floor(Math.random() * 100)
       };
-      
       setAppointmentDoc(newAppointment);
       setHasAppointment(true);
       onSuccess?.(newAppointment);
-      
     } catch (err) {
-      console.error('Error saving appointment:', err);
-      setError('אירעה שגיאה בשמירת התור. אנא נסה שוב.');
+      console.error('CRITICAL ERROR in BookingForm handleSubmit:', err);
+      setError('אירעה שגיאה קריטית. אנא נסה לרענן את הדף או נסה שוב מאוחר יותר.');
     } finally {
       setLoading(false);
     }
   };
-  
+
   // Check if a date is disabled (weekends + past dates)
   const ALLOWED_DAYS = [0, 2, 3];
   const isDateDisabled = (date) => {
@@ -146,12 +198,33 @@ export default function BookingForm({ onSuccess, user, activeAppointment }) {
     return !ALLOWED_DAYS.includes(day) || date < today;
   };
   
-  // Check if a time slot is available
+  // בדיקת זמינות שעת תור לפי שעות האדמין
   const isTimeAvailable = (time) => {
-    if (!form.date) return false;
-    // Add your availability logic here
+    if (!form || !form.date || !workingHours) return false;
+    if (typeof time !== 'string' || !/^[0-2][0-9]:[0-5][0-9]$/.test(time)) return false;
+    const now = new Date();
+    const selectedDate = new Date(form.date);
+    if (isNaN(selectedDate)) return false;
+    const dayIdx = selectedDate.getDay();
+    const key = dayKeys[dayIdx];
+    const hours = workingHours[key];
+    if (!hours || !hours.open || !hours.from || !hours.to) return false;
+    // האם בטווח שעות האדמין
+    if (!(time >= hours.from && time <= hours.to)) return false;
+    // אם זה היום הנוכחי, חסום שעות שכבר עברו
+    if (
+      selectedDate.getFullYear() === now.getFullYear() &&
+      selectedDate.getMonth() === now.getMonth() &&
+      selectedDate.getDate() === now.getDate()
+    ) {
+      const [h, m] = time.split(':').map(Number);
+      if (h < now.getHours() || (h === now.getHours() && m <= now.getMinutes())) {
+        return false;
+      }
+    }
     return true;
   };
+
   
   // Handle date selection
   const handleDateSelect = (date) => {
@@ -333,94 +406,12 @@ export default function BookingForm({ onSuccess, user, activeAppointment }) {
               <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 500, mb: 1 }}>
                 בחר תאריך:
               </Typography>
-              {isMobile ? (
-                <>
-                  <Button
-                    fullWidth
-                    variant="outlined"
-                    onClick={() => setOpenDatePicker(true)}
-                    disabled={loading}
-                    sx={{ 
-                      justifyContent: 'flex-start',
-                      textTransform: 'none',
-                      py: 1.5,
-                      borderRadius: 1,
-                      borderColor: form.date ? 'primary.main' : 'text.disabled',
-                      color: form.date ? 'text.primary' : 'text.secondary',
-                      fontSize: '1rem'
-                    }}
-                  >
-                    {form.date ? form.date.toLocaleDateString('he-IL') : 'לחץ לבחירת תאריך'}
-                  </Button>
-                  
-                  <Dialog 
-                    open={openDatePicker} 
-                    onClose={() => setOpenDatePicker(false)}
-                    maxWidth="xs"
-                    fullWidth
-                  >
-                    <DialogTitle sx={{ textAlign: 'center' }}>בחר תאריך</DialogTitle>
-                    <IconButton
-                      aria-label="close"
-                      onClick={() => setOpenDatePicker(false)}
-                      sx={{
-                        position: 'absolute',
-                        left: 8,
-                        top: 8,
-                        color: (theme) => theme.palette.grey[500],
-                      }}
-                    >
-                      <CloseIcon />
-                    </IconButton>
-                    <DialogContent sx={{ display: 'flex', justifyContent: 'center' }}>
-                      <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={heLocale}>
-                        <CustomMonthCalendar
-  value={form.date}
-  onChange={handleDateSelect}
-/>
-                      </LocalizationProvider>
-                    </DialogContent>
-                  </Dialog>
-                </>
-              ) : (
-                <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={heLocale}>
-                  <Box sx={{ 
-                    display: 'flex', 
-                    justifyContent: 'center',
-                    border: '1px solid', 
-                    borderColor: 'divider',
-                    borderRadius: 1,
-                    p: 2,
-                    bgcolor: 'background.default'
-                  }}>
-                    <CalendarPicker
-                      date={form.date}
-                      onChange={handleDateSelect}
-                      disablePast
-                      shouldDisableDate={isDateDisabled}
-                      renderDay={(day, _value, DayComponentProps) => {
-                        const isSelected = form.date && day.toDateString() === form.date.toDateString();
-                        return (
-                          <PickersDay
-                            {...DayComponentProps}
-                            selected={isSelected}
-                            disabled={isDateDisabled(day)}
-                            sx={{
-                              '&.Mui-selected': {
-                                backgroundColor: 'primary.main',
-                                color: 'primary.contrastText',
-                                '&:hover': {
-                                  backgroundColor: 'primary.dark',
-                                },
-                              },
-                            }}
-                          />
-                        );
-                      }}
-                    />
-                  </Box>
-                </LocalizationProvider>
-              )}
+              <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={heLocale}>
+                <CustomMonthCalendar
+                  value={form.date}
+                  onChange={handleDateSelect}
+                />
+              </LocalizationProvider>
             </Grid>
             
             {/* Time Picker */}
@@ -470,7 +461,7 @@ export default function BookingForm({ onSuccess, user, activeAppointment }) {
                     </IconButton>
                     <DialogContent>
                       <Grid container spacing={1}>
-                        {TIMES.map((time) => (
+                        {times.map((time) => (
                           <Grid item xs={6} key={time}>
                             <Button
                               fullWidth

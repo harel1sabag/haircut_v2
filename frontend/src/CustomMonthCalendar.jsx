@@ -55,7 +55,12 @@ export default function CustomMonthCalendar({ value, onChange }) {
   key={j}
   className={[
     j === 6 ? 'shabbat' : '',
-    value && day && value.getDate() === day && value.getMonth() === month && value.getFullYear() === year ? 'selected' : '',
+    value && day &&
+      value instanceof Date &&
+      value.getDate() === day &&
+      value.getMonth() === month &&
+      value.getFullYear() === year
+      ? 'selected' : '',
     day && (new Date(year, month, day) < today || new Date(year, month, day) > maxDate) ? 'disabled' : ''
   ].join(' ')}
   onClick={
