@@ -67,21 +67,40 @@ export default function BookingForm({ onSuccess, user, activeAppointment }) {
       setTimes([]);
       return;
     }
-    // צור מערך של כל השעות הרבע/חצי שעה בטווח
+    console.log('שעות עבודה:', hours);
+    
+    // צור מערך של כל השעות בטווח (ברווחים של שעה)
     const slots = [];
     let [fromH, fromM] = hours.from.split(':').map(Number);
     let [toH, toM] = hours.to.split(':').map(Number);
+    
+    // יצירת אובייקט תאריך נוכחי
     let current = new Date(form.date);
     current.setHours(fromH, fromM, 0, 0);
+    
+    // אם השעה ההתחלתית לא עגולה, נוסיף את השעה הבאה
+    if (fromM > 0) {
+      current.setHours(fromH + 1, 0, 0, 0);
+    }
+    
+    // הגדרת שעת סיום
     const end = new Date(form.date);
     end.setHours(toH, toM, 0, 0);
+    
+    console.log('טווח שעות:', current.getHours() + ':00', '-', end.getHours() + ':00');
+    
+    // לולאה ליצירת השעות
     while (current <= end) {
       const h = String(current.getHours()).padStart(2, '0');
-      const m = String(current.getMinutes()).padStart(2, '0');
-      slots.push(`${h}:${m}`);
-      // אפשר לשנות ל-30 דקות או 15 דקות
-      current.setMinutes(current.getMinutes() + 30);
+      const timeStr = `${h}:00`;  // תמיד שעה עגולה
+      slots.push(timeStr);
+      console.log('הוספתי שעה:', timeStr);
+      
+      // מעבר לשעה הבאה
+      current.setHours(current.getHours() + 1);
     }
+    
+    console.log('כל השעות הזמינות:', slots);
     setTimes(slots);
   }, [form.date, workingHours]);
 
@@ -198,30 +217,33 @@ export default function BookingForm({ onSuccess, user, activeAppointment }) {
     return !ALLOWED_DAYS.includes(day) || date < today;
   };
   
-  // בדיקת זמינות שעת תור לפי שעות האדמין
+  // בדיקת זמינות שעת תור לפי שעות האדמין (מותאם לשעות עגולות)
   const isTimeAvailable = (time) => {
     if (!form || !form.date || !workingHours) return false;
-    if (typeof time !== 'string' || !/^[0-2][0-9]:[0-5][0-9]$/.test(time)) return false;
+    if (typeof time !== 'string' || !/^[0-2][0-9]:00$/.test(time)) return false;
+    
     const now = new Date();
     const selectedDate = new Date(form.date);
     if (isNaN(selectedDate)) return false;
-    const dayIdx = selectedDate.getDay();
-    const key = dayKeys[dayIdx];
-    const hours = workingHours[key];
-    if (!hours || !hours.open || !hours.from || !hours.to) return false;
-    // האם בטווח שעות האדמין
-    if (!(time >= hours.from && time <= hours.to)) return false;
-    // אם זה היום הנוכחי, חסום שעות שכבר עברו
-    if (
+    
+    // בדיקה אם התאריך עתידי או היום
+    const isToday = 
       selectedDate.getFullYear() === now.getFullYear() &&
       selectedDate.getMonth() === now.getMonth() &&
-      selectedDate.getDate() === now.getDate()
-    ) {
-      const [h, m] = time.split(':').map(Number);
-      if (h < now.getHours() || (h === now.getHours() && m <= now.getMinutes())) {
+      selectedDate.getDate() === now.getDate();
+    
+    // אם זה היום, נבדוק שהשעה לא עברה
+    if (isToday) {
+      const [h] = time.split(':').map(Number);
+      if (h < now.getHours()) {
+        return false;
+      }
+      // אם השעה הנוכחית היא בדיוק השעה הנבדקת, נבדוק את הדקות
+      if (h === now.getHours() && now.getMinutes() > 0) {
         return false;
       }
     }
+    
     return true;
   };
 
@@ -313,8 +335,10 @@ export default function BookingForm({ onSuccess, user, activeAppointment }) {
     <Box sx={{
       maxWidth: 600,
       mx: 'auto',
-      p: { xs: 2, sm: 3 },
-      mt: { xs: 2, sm: 4 },
+      p: { xs: 1, sm: 3 },
+      mt: { xs: 1, sm: 4 },
+      mb: 4,
+      direction: 'rtl'
     }}>
       <Paper 
         elevation={3} 
@@ -322,7 +346,8 @@ export default function BookingForm({ onSuccess, user, activeAppointment }) {
           p: { xs: 2, sm: 4 }, 
           borderRadius: 2, 
           bgcolor: 'background.paper',
-          position: 'relative'
+          position: 'relative',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
         }}
       >
         <Typography 
@@ -370,10 +395,35 @@ export default function BookingForm({ onSuccess, user, activeAppointment }) {
                 required
                 variant="outlined"
                 size={isMobile ? 'small' : 'medium'}
-                sx={{ mb: 1 }}
+                sx={{ 
+                  mb: 2,
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': {
+                      borderColor: '#ddd',
+                    },
+                    '&:hover fieldset': {
+                      borderColor: '#aaa',
+                    },
+                    '&.Mui-focused fieldset': {
+                      borderColor: '#1976d2',
+                    },
+                  },
+                }}
                 inputProps={{
                   dir: 'rtl',
-                  style: { textAlign: 'right' }
+                  style: { 
+                    textAlign: 'right',
+                    padding: isMobile ? '10px 14px' : '12px 14px',
+                  }
+                }}
+                InputLabelProps={{
+                  sx: {
+                    right: isMobile ? 0 : 0,
+                    left: 'auto',
+                    '&.Mui-focused': {
+                      color: '#1976d2',
+                    },
+                  }
                 }}
               />
             </Grid>
@@ -391,21 +441,46 @@ export default function BookingForm({ onSuccess, user, activeAppointment }) {
                 disabled={loading}
                 variant="outlined"
                 size={isMobile ? 'small' : 'medium'}
-                sx={{ mb: 1 }}
+                sx={{ 
+                  mb: 2,
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': {
+                      borderColor: '#ddd',
+                    },
+                    '&:hover fieldset': {
+                      borderColor: '#aaa',
+                    },
+                    '&.Mui-focused fieldset': {
+                      borderColor: '#1976d2',
+                    },
+                  },
+                }}
                 inputProps={{
                   dir: 'ltr',
                   inputMode: 'numeric',
                   pattern: '[0-9]*',
-                  style: { textAlign: 'right' }
+                  style: { 
+                    textAlign: 'right',
+                    padding: isMobile ? '10px 14px' : '12px 14px',
+                  }
+                }}
+                InputLabelProps={{
+                  sx: {
+                    right: isMobile ? 0 : 0,
+                    left: 'auto',
+                    '&.Mui-focused': {
+                      color: '#1976d2',
+                    },
+                  }
                 }}
               />
             </Grid>
             
             {/* Date Picker */}
             <Grid item xs={12}>
-              <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 500, mb: 1 }}>
-                בחר תאריך:
-              </Typography>
+                <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600, mb: 2, mt: 1, textAlign: 'right' }}>
+                  בחר תאריך:
+                </Typography>
               <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={heLocale}>
                 <CustomMonthCalendar
                   value={form.date}
@@ -416,9 +491,9 @@ export default function BookingForm({ onSuccess, user, activeAppointment }) {
             
             {/* Time Picker */}
             <Grid item xs={12}>
-              <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 500, mb: 1 }}>
-                בחר שעה:
-              </Typography>
+                <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600, mb: 2, mt: 1, textAlign: 'right' }}>
+                  בחר שעה:
+                </Typography>
               
               {isMobile ? (
                 <>
@@ -529,19 +604,20 @@ export default function BookingForm({ onSuccess, user, activeAppointment }) {
                 size="large"
                 disabled={loading || !form.date || !form.time}
                 sx={{
-                  py: 1.5,
+                  py: isMobile ? 1.2 : 1.5,
                   borderRadius: 2,
-                  fontSize: '1.1rem',
+                  fontSize: isMobile ? '1rem' : '1.1rem',
                   fontWeight: 'bold',
                   textTransform: 'none',
                   boxShadow: 2,
+                  mt: 1,
                   '&:hover': {
                     boxShadow: 4,
                     bgcolor: 'primary.dark',
                   },
                   '&.Mui-disabled': {
-                    bgcolor: 'action.disabledBackground',
-                    color: 'text.disabled',
+                    bgcolor: 'rgba(0, 0, 0, 0.12)',
+                    color: 'rgba(0, 0, 0, 0.26)',
                   },
                 }}
               >
