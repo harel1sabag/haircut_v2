@@ -288,7 +288,7 @@ export default function BookingForm({ onSuccess, user, activeAppointment }) {
           }}
         >
           <Typography variant="h5" gutterBottom sx={{ fontWeight: 'bold', mb: 3, color: 'success.dark' }}>
-            התור שלך נקבע בהצלחה! 🎉
+            התור שלך נקבע בהצלחה! 
           </Typography>
           
           <Table 
