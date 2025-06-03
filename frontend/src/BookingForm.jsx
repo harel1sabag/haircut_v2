@@ -209,7 +209,7 @@ export default function BookingForm({ onSuccess, user, activeAppointment }) {
   };
 
   // Check if a date is disabled (weekends + past dates)
-  const ALLOWED_DAYS = [0, 2, 3];
+  const ALLOWED_DAYS = [0, 1, 2, 3, 4, 5, 6];
   const isDateDisabled = (date) => {
     const day = date.getDay();
     const today = new Date();
@@ -478,15 +478,27 @@ export default function BookingForm({ onSuccess, user, activeAppointment }) {
             
             {/* Date Picker */}
             <Grid item xs={12}>
-                <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600, mb: 2, mt: 1, textAlign: 'right' }}>
-                  בחר תאריך:
-                </Typography>
-              <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={heLocale}>
-                <CustomMonthCalendar
-                  value={form.date}
-                  onChange={handleDateSelect}
-                />
-              </LocalizationProvider>
+              {(() => {
+                let daysEnabled = [0,1,2,3,4,5,6];
+                if (workingHours) {
+                  daysEnabled = Object.entries(workingHours)
+                    .map(([day, info], idx) => info && info.open ? idx : null)
+                    .filter(idx => idx !== null);
+                }
+
+                return (
+                  <div className="calendar-container">
+                    <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600, mb: 2, mt: 1, textAlign: 'right' }}>
+                      בחר תאריך:
+                    </Typography>
+                    <CustomMonthCalendar
+                      value={form.date}
+                      onChange={handleDateSelect}
+                      daysEnabled={daysEnabled}
+                    />
+                  </div>
+                );
+              })()}
             </Grid>
             
             {/* Time Picker */}

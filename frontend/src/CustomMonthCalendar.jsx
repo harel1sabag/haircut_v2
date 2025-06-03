@@ -27,7 +27,8 @@ function getMonthMatrix(year, month) {
   return matrix;
 }
 
-export default function CustomMonthCalendar({ value, onChange }) {
+// daysEnabled: מערך של מספרי ימים שמותרים לבחירה (0=ראשון, 1=שני, ...)
+export default function CustomMonthCalendar({ value, onChange, daysEnabled = [0,1,2,3,4,5,6] }) {
   const today = new Date();
   today.setHours(0,0,0,0);
   const maxDate = new Date(today);
@@ -38,7 +39,7 @@ export default function CustomMonthCalendar({ value, onChange }) {
 
   return (
     <div className="calendar-container">
-      <div className="calendar-title">לוח תכנון לחודש: {today.toLocaleString('he-IL', { month: 'long', year: 'numeric' })}</div>
+
       <table className="calendar-table">
         <thead>
           <tr>
@@ -61,14 +62,14 @@ export default function CustomMonthCalendar({ value, onChange }) {
       value.getMonth() === month &&
       value.getFullYear() === year
       ? 'selected' : '',
-    day && (new Date(year, month, day) < today || new Date(year, month, day) > maxDate) ? 'disabled' : ''
+    day && (new Date(year, month, day) < today || new Date(year, month, day) > maxDate || !daysEnabled.includes(new Date(year, month, day).getDay())) ? 'disabled' : ''
   ].join(' ')}
   onClick={
-    day && !(new Date(year, month, day) < today || new Date(year, month, day) > maxDate)
+    day && !(new Date(year, month, day) < today || new Date(year, month, day) > maxDate || !daysEnabled.includes(new Date(year, month, day).getDay()))
       ? () => onChange(new Date(year, month, day))
       : undefined
   }
-  style={{ cursor: day && !(new Date(year, month, day) < today || new Date(year, month, day) > maxDate) ? 'pointer' : 'default' }}
+  style={{ cursor: day && !(new Date(year, month, day) < today || new Date(year, month, day) > maxDate || !daysEnabled.includes(new Date(year, month, day).getDay())) ? 'pointer' : 'default' }}
 >
   {day && <span>{day}</span>}
 </td>
