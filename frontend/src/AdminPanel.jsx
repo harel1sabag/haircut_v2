@@ -8,6 +8,13 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import { signOut } from 'firebase/auth';
 import { auth } from './firebase';
 
+function formatHebrewDate(dateString) {
+  if (!dateString) return '-';
+  const d = new Date(dateString);
+  if (isNaN(d)) return '-';
+  return d.toLocaleDateString('he-IL');
+}
+
 export default function AdminPanel() {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -170,7 +177,7 @@ export default function AdminPanel() {
                   <TableRow key={row.id}>
                     <TableCell align="right">{row.name}</TableCell>
                     <TableCell align="right">{row.phone}</TableCell>
-                    <TableCell align="right">{row.date}</TableCell>
+                    <TableCell align="right">{formatHebrewDate(row.date)}</TableCell>
                     <TableCell align="right">{row.time}</TableCell>
                     <TableCell align="right">{row.email}</TableCell>
                     <TableCell align="right">{row.createdAt ? new Date(row.createdAt).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' }) : '-'}</TableCell>
@@ -239,7 +246,7 @@ export default function AdminPanel() {
                     <TableRow key={row.id}>
                       <TableCell align="right">{row.name}</TableCell>
                       <TableCell align="right">{row.phone}</TableCell>
-                      <TableCell align="right">{row.date}</TableCell>
+                      <TableCell align="right">{formatHebrewDate(row.date)}</TableCell>
                       <TableCell align="right">{row.time}</TableCell>
                       <TableCell align="right">{row.email}</TableCell>
                       <TableCell align="right">{row.createdAt ? new Date(row.createdAt).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' }) : '-'}</TableCell>
